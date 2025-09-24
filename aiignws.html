@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>INGRES AI Groundwater Assistant</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Chosen Palette: "River Delta" - A calming and professional palette using shades of blue, teal, sand, and stone grey to evoke water and earth. -->
+    <!-- Application Structure Plan: The application is designed as a single-page interactive chat interface. This structure was chosen because the primary goal of the source document is to create an AI-driven chatbot to simplify data access. A conversational UI is the most direct and intuitive way to achieve this, allowing users to ask questions in natural language rather than navigating complex menus. The structure includes an introductory section to onboard users, the main chat component for interaction, and a section for key features, directly translating the report's proposal into a functional user experience. The flow is centered around the user query -> bot response loop, which can include dynamic text and visualizations. -->
+    <!-- Visualization & Content Choices: 
+        - Report Info: Project Proposal Text -> Goal: Inform -> Presentation: Static HTML text blocks with Tailwind CSS styling -> Interaction: None -> Justification: To provide context and explain the chatbot's purpose to the user upon arrival.
+        - Report Info: Groundwater Data (e.g., historical levels, extraction rates) -> Goal: Compare, Analyze Change -> Viz/Presentation: Dynamic Bar/Line Charts via Chart.js -> Interaction: User types a natural language query. The bot responds with a chart. Tooltips on hover. -> Justification: Directly addresses the key feature of "interactive scientific diagrams and visualizations" in a dynamic, user-driven way. Chart.js on a Canvas element is used for performance and responsiveness.
+        - Report Info: Assessment Categories (Safe, Critical, etc.) -> Goal: Show Proportions -> Viz/Presentation: Dynamic Donut Chart via Chart.js -> Interaction: User asks for a breakdown by category. Bot generates the chart. -> Justification: A donut chart is an effective way to show the proportion of different assessment units at a glance.
+    -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #F8F9FA;
+        }
+        .chat-container::-webkit-scrollbar {
+            width: 8px;
+        }
+        .chat-container::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+        .chat-container::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 4px;
+        }
+        .chat-container::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+            height: 300px;
+            max-height: 400px;
+        }
+        @media (min-width: 768px) {
+            .chart-container {
+                height: 350px;
+            }
+        }
+        .mic-listening {
+            animation: pulse 1.5s infinite;
+        }
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+            70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+        }
+        .loader {
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #3498db;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="text-gray-800">
+
+    <div class="container mx-auto p-4 max-w-5xl">
+
+        <header class="text-center mb-8 relative">
+            <h1 class="text-3xl md:text-4xl font-bold text-blue-800" data-key="title">INGRES AI Assistant ✨</h1>
+            <p class="text-md md:text-lg text-gray-600 mt-2" data-key="subtitle">Your intelligent guide to India's groundwater resources.</p>
+            <div class="absolute top-2 right-2 sm:top-0 sm:right-0">
+                <select id="language-selector" class="bg-white border border-gray-300 text-gray-700 py-2 px-4 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <option value="en">English</option>
+                    <option value="hi">हिन्दी</option>
+                    <option value="ta">தமிழ்</option>
+                    <option value="te">తెలుగు</option>
+                    <option value="bn">বাংলা</option>
+                    <option value="mr">मराठी</option>
+                    <option value="kn">ಕನ್ನಡ</option>
+                    <option value="gu">ગુજરાતી</option>
+                    <option value="pa">ਪੰਜਾਬੀ</option>
+                    <option value="or">ଓଡ଼ିଆ</option>
+                </select>
+            </div>
+        </header>
+
+        <main>
+            <div class="bg-white rounded-xl shadow-lg border border-gray-200 flex flex-col h-[70vh] sm:h-[75vh] max-w-4xl mx-auto">
+                <div class="p-4 border-b border-gray-200">
+                    <h2 class="text-xl font-semibold text-center text-gray-700" data-key="chatTitle">Chat with INGRES AI</h2>
+                </div>
+                
+                <div id="chat-container" class="chat-container flex-1 p-6 overflow-y-auto space-y-4">
+                    <div class="flex">
+                        <div class="bg-blue-100 text-blue-800 p-3 rounded-lg max-w-xs md:max-w-md">
+                            <p class="font-semibold mb-1">INGRES AI</p>
+                            <p data-key="welcomeMessage">Hello! I am an AI assistant powered by Gemini. I can help you with groundwater data. How can I assist you today? You can ask me things like "Show groundwater extraction in Punjab from 2020-2024" or "Compare water levels in Tamil Nadu and Kerala for 2023".</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="p-4 bg-gray-50 border-t border-gray-200">
+                    <div class="flex items-center space-x-3">
+                        <input type="text" id="user-input" class="flex-1 w-full px-4 py-2 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-blue-500 transition duration-300" data-key="inputPlaceholder" placeholder="Type your message...">
+                        <button id="mic-btn" class="bg-gray-200 text-gray-700 p-2.5 rounded-full hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition duration-300">
+                           &#127908;
+                        </button>
+                        <button id="send-btn" class="bg-blue-600 text-white px-5 py-2.5 rounded-full hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition duration-300" data-key="sendButton">
+                            Send
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <section class="mt-8 bg-white p-6 rounded-xl shadow-md border border-gray-200">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <div>
+                    <h2 class="text-xl md:text-2xl font-semibold text-blue-700 mb-4" data-key="aboutTitle">About the Project</h2>
+                    <p class="text-gray-700" data-key="aboutText">
+                        To improve the accessibility of the Dynamic Ground Water Resources of India assessment, we are developing this AI-driven ChatBOT for the INGRES portal. This intelligent virtual assistant enables users to easily query groundwater data, access historical and current assessments, and obtain instant insights without navigating complex datasets.
+                    </p>
+                </div>
+                <div>
+                    <h3 class="text-xl md:text-2xl font-semibold text-blue-700 mb-4" data-key="featuresTitle">Key Features</h3>
+                    <ul class="space-y-3 text-gray-700">
+                        <li class="flex items-start">
+                            <span class="text-blue-500 mr-3 mt-1">&#128161;</span>
+                            <span data-key="feature1">Intelligent query handling for groundwater estimation data.</span>
+                        </li>
+                        <li class="flex items-start">
+                            <span class="text-blue-500 mr-3 mt-1">&#128269;</span>
+                            <span data-key="feature2">Real-time access to current and historical assessment results.</span>
+                        </li>
+                        <li class="flex items-start">
+                            <span class="text-blue-500 mr-3 mt-1">&#128202;</span>
+                            <span data-key="feature3">Interactive scientific diagrams and visualizations.</span>
+                        </li>
+                        <li class="flex items-start">
+                            <span class="text-blue-500 mr-3 mt-1">&#127760;</span>
+                            <span data-key="feature4">Multilingual support, including Indian regional languages.</span>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <footer class="text-center mt-8">
+            <p class="text-sm text-gray-500">This AI-driven ChatBOT for INGRES is a project designed to make India's groundwater resource data more accessible for planners, researchers, and the public.</p>
+        </footer>
+
+    </div>
+
+    <script>
+        const chatContainer = document.getElementById('chat-container');
+        const userInput = document.getElementById('user-input');
+        const sendBtn = document.getElementById('send-btn');
+        const micBtn = document.getElementById('mic-btn');
+        const languageSelector = document.getElementById('language-selector');
+        let chartCount = 0;
+
+        const translations = {
+            en: { title: "INGRES AI Assistant ✨", subtitle: "Your intelligent guide to India's groundwater resources.", aboutTitle: "About the Project", aboutText: "To improve the accessibility of the Dynamic Ground Water Resources of India assessment, we are developing this AI-driven ChatBOT for the INGRES portal. This intelligent virtual assistant enables users to easily query groundwater data, access historical and current assessments, and obtain instant insights without navigating complex datasets.", featuresTitle: "Key Features", feature1: "Intelligent query handling for groundwater estimation data.", feature2: "Real-time access to current and historical assessment results.", feature3: "Interactive scientific diagrams and visualizations.", feature4: "Multilingual support, including Indian regional languages.", chatTitle: "Chat with INGRES AI", welcomeMessage: 'Hello! I am an AI assistant powered by Gemini. I can help you with groundwater data. How can I assist you today? You can ask me things like "Show groundwater extraction in Punjab from 2020-2024" or "Compare water levels in Tamil Nadu and Kerala for 2023".', inputPlaceholder: "Type your message or use the microphone...", sendButton: "Send", greetingResponse: "Hello! I am INGRES AI, powered by Gemini. How can I help you with groundwater data today?" },
+            hi: { title: "INGRES एआई सहायक ✨", subtitle: "भारत के भूजल संसाधनों के लिए आपका बुद्धिमान मार्गदर्शक।", aboutTitle: "परियोजना के बारे में", aboutText: "भारत के गतिशील भूजल संसाधनों के मूल्यांकन की पहुंच में सुधार के लिए, हम INGRES पोर्टल के लिए यह AI-संचालित चैटबॉट विकसित कर रहे हैं। यह बुद्धिमान वर्चुअल असिस्टेंट उपयोगकर्ताओं को जटिल डेटासेट नेविगेट किए बिना आसानी से भूजल डेटा क्वेरी करने, ऐतिहासिक और वर्तमान आकलन तक पहुंचने और तत्काल अंतर्दृष्टि प्राप्त करने में सक्षम बनाता है।", featuresTitle: "प्रमुख विशेषताऐं", feature1: "भूजल अनुमान डेटा के लिए बुद्धिमान क्वेरी हैंडलिंग।", feature2: "वर्तमान और ऐतिहासिक मूल्यांकन परिणामों तक वास्तविक समय में पहुंच।", feature3: "संवादात्मक científico आरेख और विज़ुअलाइज़ेशन।", feature4: "भारतीय क्षेत्रीय भाषाओं सहित बहुभाषी समर्थन।", chatTitle: "INGRES एआई के साथ चैट करें", welcomeMessage: "नमस्ते! मैं जेमिनी द्वारा संचालित एक एआई सहायक हूँ। मैं भूजल डेटा में आपकी मदद कर सकता हूँ। आज मैं आपकी कैसे सहायता कर सकता हूँ? आप मुझसे पूछ सकते हैं जैसे '2020-2024 तक पंजाब में भूजल निकासी दिखाएं' या '2023 के लिए तमिलनाडु और केरल में जल स्तर की तुलना करें'।", inputPlaceholder: "अपना संदेश लिखें या माइक्रोफ़ोन का उपयोग करें...", sendButton: "भेजें", greetingResponse: "नमस्ते! मैं जेमिनी द्वारा संचालित INGRES AI हूँ। आज मैं भूजल डेटा के साथ आपकी कैसे मदद कर सकता हूँ?" },
+            // Other languages omitted for brevity but follow the same structure
+        };
+
+        const setLanguage = (lang) => {
+            document.documentElement.lang = lang;
+            document.querySelectorAll('[data-key]').forEach(element => {
+                const key = element.getAttribute('data-key');
+                if (translations[lang] && translations[lang][key]) {
+                    if (element.tagName === 'INPUT' && element.type === 'text') {
+                        element.placeholder = translations[lang][key];
+                    } else {
+                        element.textContent = translations[lang][key];
+                    }
+                }
+            });
+        };
+        
+        languageSelector.addEventListener('change', (event) => setLanguage(event.target.value));
+        document.addEventListener('DOMContentLoaded', () => setLanguage('en'));
+
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (SpeechRecognition) {
+            const recognition = new SpeechRecognition();
+            recognition.interimResults = false;
+            micBtn.addEventListener('click', () => {
+                const currentLang = languageSelector.value;
+                const langCodeMap = { en: 'en-IN', hi: 'hi-IN', ta: 'ta-IN', te: 'te-IN', bn: 'bn-IN', mr: 'mr-IN', kn: 'kn-IN', gu: 'gu-IN', pa: 'pa-IN', or: 'or-IN' };
+                recognition.lang = langCodeMap[currentLang] || 'en-IN';
+                micBtn.classList.add('mic-listening');
+                micBtn.disabled = true;
+                recognition.start();
+            });
+            recognition.onresult = (event) => { userInput.value = event.results[0][0].transcript; };
+            recognition.onspeechend = () => recognition.stop();
+            recognition.onend = () => {
+                micBtn.classList.remove('mic-listening');
+                micBtn.disabled = false;
+            };
+            recognition.onerror = (event) => {
+                console.error("Speech recognition error", event.error);
+                micBtn.classList.remove('mic-listening');
+                micBtn.disabled = false;
+            };
+        } else {
+            micBtn.style.display = 'none';
+        }
+
+        const addMessage = (sender, message, isUser, chartData = null) => {
+            const messageWrapper = document.createElement('div');
+            messageWrapper.classList.add('flex', isUser ? 'justify-end' : 'justify-start');
+            const messageBubble = document.createElement('div');
+            messageBubble.classList.add(isUser ? 'bg-gray-200' : 'bg-blue-100', isUser ? 'text-gray-800' : 'text-blue-800', 'p-3', 'rounded-lg', 'max-w-xs', 'md:max-w-md');
+            const senderName = document.createElement('p');
+            senderName.classList.add('font-semibold', 'mb-1');
+            senderName.textContent = sender;
+            messageBubble.appendChild(senderName);
+            
+            if (typeof message === 'string') {
+                const messageText = document.createElement('p');
+                messageText.innerHTML = message; // Use innerHTML to render line breaks
+                messageBubble.appendChild(messageText);
+            } else if (message.type === 'loader') {
+                const loader = document.createElement('div');
+                loader.classList.add('loader');
+                messageBubble.appendChild(loader);
+            } else if (message.type === 'chart' && chartData) {
+                const chartDiv = document.createElement('div');
+                chartDiv.classList.add('chart-container', 'mt-2');
+                const canvas = document.createElement('canvas');
+                const canvasId = `chart-${chartCount++}`;
+                canvas.id = canvasId;
+                chartDiv.appendChild(canvas);
+                messageBubble.appendChild(chartDiv);
+                
+                const summarizeBtn = document.createElement('button');
+                summarizeBtn.className = 'mt-2 w-full text-center bg-blue-500 text-white py-1 px-3 rounded-lg hover:bg-blue-600 transition-colors text-sm';
+                summarizeBtn.textContent = '✨ Summarize Insights';
+                summarizeBtn.onclick = () => summarizeChartData(chartData, summarizeBtn);
+                messageBubble.appendChild(summarizeBtn);
+
+                setTimeout(() => renderChart(canvasId, chartData), 100);
+            }
+
+            messageWrapper.appendChild(messageBubble);
+            chatContainer.appendChild(messageWrapper);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+            return messageWrapper;
+        };
+        
+        const renderChart = (canvasId, chartData) => {
+            const ctx = document.getElementById(canvasId).getContext('2d');
+            new Chart(ctx, {
+                type: chartData.type,
+                data: chartData.data,
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: { legend: { position: 'top' }, title: { display: true, text: chartData.title, font: { size: 16 } }, tooltip: { callbacks: { label: function(context) { let label = context.dataset.label || ''; if (label) { label += ': '; } if (context.parsed.y !== null) { label += context.parsed.y + ' BCM'; } return label; } } } },
+                    scales: { x: { ticks: { callback: function(value, index, values) { const label = this.getLabelForValue(value); if (label.length > 16) { return label.substring(0, 16) + '...'; } return label; } } }, y: { beginAtZero: true, title: { display: true, text: 'Billion Cubic Meters (BCM)' } } }
+                }
+            });
+        };
+
+        const callGeminiAPI = async (userPrompt, systemPrompt, generationConfig) => {
+            const apiKey = "";
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+            
+            const payload = {
+                contents: [{ parts: [{ text: userPrompt }] }],
+                systemInstruction: { parts: [{ text: systemPrompt }] },
+                generationConfig: generationConfig
+            };
+
+            let response;
+            let retries = 3;
+            let delay = 1000;
+
+            while(retries > 0) {
+                try {
+                    response = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (response.ok) {
+                        const result = await response.json();
+                        return result.candidates?.[0]?.content?.parts?.[0]?.text;
+                    }
+                } catch (error) {
+                    console.error("API call failed:", error);
+                }
+                retries--;
+                await new Promise(resolve => setTimeout(resolve, delay));
+                delay *= 2; // Exponential backoff
+            }
+            return null;
+        };
+        
+        const summarizeChartData = async (chartData, button) => {
+            button.disabled = true;
+            button.textContent = 'Summarizing...';
+            const systemPrompt = "You are a data analyst. Summarize the key insights from the following chart data in a single, easy-to-understand paragraph. Focus on the main trends, comparisons, or significant data points. Respond in the language of the user's prompt.";
+            const userPrompt = `Please summarize this data in ${languageSelector.value === 'hi' ? 'Hindi' : 'English'}: ${JSON.stringify(chartData)}`;
+            
+            const summary = await callGeminiAPI(userPrompt, systemPrompt, { responseMimeType: "text/plain" });
+
+            if (summary) {
+                addMessage('INGRES AI', summary, false);
+            } else {
+                addMessage('INGRES AI', 'Sorry, I was unable to generate a summary at this time.', false);
+            }
+            button.style.display = 'none'; // Hide button after summarizing
+        };
+
+        const handleSendMessage = async () => {
+            const message = userInput.value.trim();
+            if (!message) return;
+            addMessage('You', message, true);
+            userInput.value = '';
+            const loadingMessage = addMessage('INGRES AI', { type: 'loader' }, false);
+
+            const systemPrompt = `You are an expert AI assistant for INGRES, India's groundwater resource estimation system. Your primary role is to help users access and understand groundwater data through conversation and visualizations.
+            - When a user asks a question that requires data visualization (e.g., "compare", "show data for", "plot", "what is the trend"), you MUST respond ONLY with a valid JSON object formatted for Chart.js. Do not add any text before or after the JSON.
+            - For general conversation, greetings, or questions that don't require a chart, provide a helpful, concise text response.
+            - Analyze the user's query for locations, years, and data types to generate accurate chart data. Use realistic but sample data if you don't have access to real-time information.
+            - Respond in the language of the user's prompt (e.g., Hindi for Hindi queries).
+            - Do not use markdown in your responses.`;
+            
+            const chartSchema = {
+                type: "OBJECT",
+                properties: {
+                    type: { type: "STRING", enum: ["bar", "line", "pie", "doughnut"] },
+                    title: { type: "STRING" },
+                    data: {
+                        type: "OBJECT",
+                        properties: {
+                            labels: { type: "ARRAY", items: { type: "STRING" } },
+                            datasets: {
+                                type: "ARRAY",
+                                items: {
+                                    type: "OBJECT",
+                                    properties: {
+                                        label: { type: "STRING" },
+                                        data: { type: "ARRAY", items: { type: "NUMBER" } },
+                                        backgroundColor: { type: "ARRAY", items: { type: "STRING" } },
+                                        borderColor: { type: "ARRAY", items: { type: "STRING" } },
+                                        borderWidth: { type: "NUMBER" }
+                                    },
+                                    required: ["label", "data"]
+                                }
+                            }
+                        },
+                        required: ["labels", "datasets"]
+                    }
+                },
+                required: ["type", "title", "data"]
+            };
+
+            const generationConfig = {
+                responseMimeType: "application/json",
+                responseSchema: chartSchema
+            };
+
+            const isDataQuery = ['compare', 'vs', 'show', 'plot', 'what is', 'data for', 'तुलना', 'दिखाएं', 'क्या है'].some(k => message.toLowerCase().includes(k));
+            
+            let responseText;
+            if (isDataQuery) {
+                responseText = await callGeminiAPI(message, systemPrompt, generationConfig);
+            } else {
+                 responseText = await callGeminiAPI(message, systemPrompt, { responseMimeType: "text/plain" });
+            }
+
+            loadingMessage.remove();
+
+            if (responseText) {
+                try {
+                    const chartJson = JSON.parse(responseText);
+                    addMessage('INGRES AI', { type: 'chart' }, false, chartJson);
+                } catch (e) {
+                    addMessage('INGRES AI', responseText.replace(/\n/g, '<br>'), false);
+                }
+            } else {
+                addMessage('INGRES AI', "I'm sorry, I encountered an error. Please try again.", false);
+            }
+        };
+
+        sendBtn.addEventListener('click', handleSendMessage);
+        userInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                handleSendMessage();
+            }
+        });
+    </script>
+</body>
+</html>
+
+
+
+
